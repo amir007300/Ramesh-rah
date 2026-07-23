@@ -1,0 +1,23 @@
+{
+  "name": "رمش راه - حسابداری باربری",
+  "short_name": "رمش راه",
+  "description": "نرم افزار حسابداری و مدیریت باربری، ثبت راننده، کرایه و کمیسیون",
+  "start_url": "/Ramesh-rah/",
+  "scope": "/Ramesh-rah/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a73e8",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
