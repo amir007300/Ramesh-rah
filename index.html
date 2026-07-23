@@ -32,7 +32,7 @@
   .btn-primary{background:var(--amber);border:1px solid var(--amber);color:var(--ink);border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;}
   .btn-outline{background:transparent;border:1px solid var(--amber);color:var(--amber);border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;}
   .summary{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:-24px;position:relative;z-index:2;}
-  @media(min-width:700px){.summary{grid-template-columns:repeat(4,1fr);}}
+  @media(min-width:700px){.summary{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
   .card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
   .card .top span{font-size:11px;font-weight:700;opacity:.6;}
@@ -110,10 +110,14 @@
       <label><span>نام و نام خانوادگی راننده *</span><input required id="f_driverName" placeholder="مثلاً: علی محمدی"></label>
       <label><span>شماره تماس</span><input id="f_phone" placeholder="09xxxxxxxxx" inputmode="tel"></label>
       <label><span>مقصد حمل بار *</span><input required id="f_destination" placeholder="مثلاً: تهران - اصفهان"></label>
-      <label><span>تاریخ</span><input type="date" id="f_date"></label>
+      <label><span>تاریخ (میلادی)</span><input type="date" id="f_date">
+        <span id="f_dateJalali" style="display:block;font-size:11px;margin-top:5px;opacity:.65;font-family:'JetBrains Mono',monospace;"></span>
+      </label>
       <label><span>مبلغ کرایه (تومان)</span><input type="number" min="0" class="mono" id="f_freight" placeholder="0"></label>
       <label><span>کمیسیون شرکت (تومان)</span><input type="number" min="0" class="mono" id="f_commission" placeholder="0"></label>
+      <label><span>تخفیف (تومان)</span><input type="number" min="0" class="mono" id="f_discount" placeholder="0"></label>
       <label><span>دریافتی از راننده (تومان)</span><input type="number" min="0" class="mono" id="f_received" placeholder="0"></label>
+      <label><span>کمیسیون پس از تخفیف (تومان)</span><input type="text" class="mono" id="f_netCommission" placeholder="0" readonly style="background:var(--paper);font-weight:700;"></label>
       <label><span>توضیحات</span><input id="f_notes" placeholder="اختیاری"></label>
     </div>
     <div class="formbtns">
@@ -145,6 +149,33 @@ function toNum(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 function fmtMoney(n){ return Math.round(n).toLocaleString("en-US"); }
 function uid(){ return Date.now()+"-"+Math.random().toString(36).slice(2,8); }
 
+// ---- تبدیل تاریخ میلادی به شمسی (بدون نیاز به کتابخانه خارجی) ----
+function toJalali(gy, gm, gd){
+  const g_d_m = [0,31,59,90,120,151,181,212,243,273,304,334];
+  let jy;
+  gy = (gm > 2) ? (gy + 1) : gy;
+  let days = 355666 + (365 * gy) + Math.floor((gy + 3) / 4) - Math.floor((gy + 99) / 100) +
+             Math.floor((gy + 399) / 400) + gd + g_d_m[gm - 1];
+  jy = -1595 + (33 * Math.floor(days / 12053));
+  days %= 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) { jy += Math.floor((days - 1) / 365); days = (days - 1) % 365; }
+  let jm, jd;
+  if (days < 186) { jm = 1 + Math.floor(days / 31); jd = 1 + (days % 31); }
+  else { jm = 7 + Math.floor((days - 186) / 30); jd = 1 + ((days - 186) % 30); }
+  return [jy, jm, jd];
+}
+const persianDigits = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+function toPersianDigits(str){ return String(str).replace(/[0-9]/g, d => persianDigits[d]); }
+function formatJalali(dateStr){
+  if (!dateStr) return "";
+  const [gy, gm, gd] = dateStr.split("-").map(Number);
+  const [jy, jm, jd] = toJalali(gy, gm, gd);
+  const p = n => String(n).padStart(2,"0");
+  return toPersianDigits(`${jy}/${p(jm)}/${p(jd)}`);
+}
+
 function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
 
 function getForm(){
@@ -155,6 +186,7 @@ function getForm(){
     date: document.getElementById('f_date').value || todayStr(),
     freight: toNum(document.getElementById('f_freight').value),
     commission: toNum(document.getElementById('f_commission').value),
+    discount: toNum(document.getElementById('f_discount').value),
     received: toNum(document.getElementById('f_received').value),
     notes: document.getElementById('f_notes').value.trim(),
   };
@@ -167,9 +199,28 @@ function setForm(r){
   document.getElementById('f_date').value = r ? r.date : todayStr();
   document.getElementById('f_freight').value = r ? (r.freight || "") : "";
   document.getElementById('f_commission').value = r ? (r.commission || "") : "";
+  document.getElementById('f_discount').value = r ? (r.discount || "") : "";
   document.getElementById('f_received').value = r ? (r.received || "") : "";
   document.getElementById('f_notes').value = r ? (r.notes || "") : "";
+  updateJalaliPreview();
+  updateNetCommissionPreview();
 }
+
+function updateJalaliPreview(){
+  const el = document.getElementById('f_dateJalali');
+  const val = document.getElementById('f_date').value;
+  el.textContent = val ? "شمسی: " + formatJalali(val) : "";
+}
+
+function updateNetCommissionPreview(){
+  const commission = toNum(document.getElementById('f_commission').value);
+  const discount = toNum(document.getElementById('f_discount').value);
+  document.getElementById('f_netCommission').value = fmtMoney(Math.max(0, commission - discount));
+}
+
+document.getElementById('f_date').addEventListener('input', updateJalaliPreview);
+document.getElementById('f_commission').addEventListener('input', updateNetCommissionPreview);
+document.getElementById('f_discount').addEventListener('input', updateNetCommissionPreview);
 
 function openForm(){
   document.getElementById('recordForm').classList.remove('hidden');
@@ -208,8 +259,12 @@ document.getElementById('searchInput').addEventListener('input', render);
 
 document.getElementById('exportBtn').addEventListener('click', () => {
   const list = getFiltered();
-  const header = ["نام راننده","شماره تماس","مقصد","تاریخ","کرایه","کمیسیون","دریافتی از راننده","مانده","توضیحات"];
-  const rows = list.map(r => [r.driverName, r.phone, r.destination, r.date, r.freight, r.commission, r.received, r.commission - r.received, r.notes || ""]);
+  const header = ["نام راننده","شماره تماس","مقصد","تاریخ (میلادی)","تاریخ (شمسی)","کرایه","کمیسیون","تخفیف","کمیسیون پس از تخفیف","دریافتی از راننده","مانده","توضیحات"];
+  const rows = list.map(r => {
+    const discount = r.discount || 0;
+    const netCommission = Math.max(0, r.commission - discount);
+    return [r.driverName, r.phone, r.destination, r.date, formatJalali(r.date), r.freight, r.commission, discount, netCommission, r.received, netCommission - r.received, r.notes || ""];
+  });
   const csv = [header, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -230,13 +285,17 @@ function getFiltered(){
 
 function renderSummary(list){
   const totals = list.reduce((acc,r)=>{
-    acc.freight += r.freight; acc.commission += r.commission; acc.received += r.received;
-    acc.balance += (r.commission - r.received); return acc;
-  }, {freight:0, commission:0, received:0, balance:0});
+    const discount = r.discount || 0;
+    const netCommission = Math.max(0, r.commission - discount);
+    acc.freight += r.freight; acc.commission += r.commission; acc.discount += discount;
+    acc.received += r.received;
+    acc.balance += (netCommission - r.received); return acc;
+  }, {freight:0, commission:0, discount:0, received:0, balance:0});
 
   const cards = [
     {label:"مجموع کرایه", value: totals.freight, color:"var(--asphalt)"},
     {label:"مجموع کمیسیون", value: totals.commission, color:"var(--amberDark)"},
+    {label:"مجموع تخفیف", value: totals.discount, color:"var(--rose)"},
     {label:"مجموع دریافتی", value: totals.received, color:"var(--teal)"},
     {label:"مانده حساب", value: totals.balance, color: totals.balance>=0 ? "var(--rose)" : "var(--teal)", note: totals.balance>=0 ? "بدهکاری راننده‌ها" : "طلبکاری راننده‌ها"},
   ];
@@ -261,9 +320,11 @@ function renderList(list){
     return;
   }
   area.innerHTML = `<div class="records">${list.map(r => {
-    const balance = r.commission - r.received;
+    const discount = r.discount || 0;
+    const netCommission = Math.max(0, r.commission - discount);
+    const balance = netCommission - r.received;
     const balColor = balance > 0 ? "var(--rose)" : balance < 0 ? "var(--teal)" : "var(--asphalt)";
-    const dateFmt = new Date(r.date).toLocaleDateString("en-GB");
+    const dateJalali = formatJalali(r.date);
     return `
     <div class="rec" data-id="${r.id}">
       <div class="body">
@@ -277,13 +338,14 @@ function renderList(list){
             <button class="delBtn" title="حذف">🗑️</button>
           </div>
         </div>
-        <p class="meta">📍 ${escapeHtml(r.destination)} · ${dateFmt}</p>
+        <p class="meta">📍 ${escapeHtml(r.destination)} · ${dateJalali}</p>
         ${r.notes ? `<p class="notes">${escapeHtml(r.notes)}</p>` : ""}
       </div>
       <div class="perf"></div>
-      <div class="stub">
+      <div class="stub" style="grid-template-columns:${discount > 0 ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr'};">
         <div><p class="lbl">کرایه</p><p class="v" style="color:var(--asphalt)">${fmtMoney(r.freight)}</p></div>
         <div><p class="lbl">کمیسیون</p><p class="v" style="color:var(--amberDark)">${fmtMoney(r.commission)}</p></div>
+        ${discount > 0 ? `<div><p class="lbl">تخفیف</p><p class="v" style="color:var(--rose)">${fmtMoney(discount)}</p></div>` : ""}
         <div><p class="lbl">مانده</p><p class="v" style="color:${balColor}">${fmtMoney(balance)}</p></div>
       </div>
       ${confirmDeleteId === r.id ? `
